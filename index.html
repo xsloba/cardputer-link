@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#cc785c">
+<title>Cardputer Link</title>
+<style>
+  :root {
+    --bg: #f4f2ec; --card: #ffffff; --text: #1f1f1f; --muted: #6b6b6b;
+    --line: #e4e0d6; --accent: #cc785c; --accent-ink: #ffffff;
+    --ok: #2e8b57; --warn: #b7791f; --bad: #c0392b; --field: #f8f7f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141414; --card: #1f1f1f; --text: #f0eee6; --muted: #9a9a9a;
+      --line: #2e2e2e; --accent: #d98b6f; --accent-ink: #141414;
+      --ok: #5cc28a; --warn: #e0b04c; --bad: #ef6b5b; --field: #262626;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  }
+  main { max-width: 520px; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 16px; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .pill { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--line); color: var(--muted); }
+  .pill.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .pill.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+  button {
+    font: inherit; border: 0; border-radius: 10px; padding: 12px 16px; cursor: pointer;
+    background: var(--accent); color: var(--accent-ink); font-weight: 600;
+  }
+  button.secondary { background: var(--field); color: var(--text); border: 1px solid var(--line); }
+  button.link { background: none; color: var(--bad); padding: 6px 8px; font-weight: 500; }
+  button:disabled { opacity: .5; cursor: default; }
+  .wide { width: 100%; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .row > .grow { flex: 1; min-width: 0; }
+  input {
+    font: inherit; width: 100%; padding: 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--field); color: var(--text);
+  }
+  input.pin { font-size: 28px; letter-spacing: .35em; text-align: center; font-variant-numeric: tabular-nums; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+  li:first-child { border-top: 0; }
+  li.pick { cursor: pointer; }
+  li.pick.selected { color: var(--accent); font-weight: 600; }
+  .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { font-size: 12px; color: var(--muted); }
+  .bars { font-family: ui-monospace, monospace; font-size: 13px; color: var(--muted); }
+  .msg { margin: 10px 0 0; font-size: 14px; }
+  .msg.ok { color: var(--ok); } .msg.bad { color: var(--bad); } .msg.muted { color: var(--muted); }
+  .hint { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+  .stack > * + * { margin-top: 10px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Cardputer Link</h1>
+    <span id="state" class="pill">Not connected</span>
+  </header>
+
+  <section id="unsupported" class="card" hidden>
+    <h2>Open in Bluefy</h2>
+    <p>This browser can't use Bluetooth. On iPhone, open this page in <strong>Bluefy</strong>. On Android or a computer, use Chrome.</p>
+  </section>
+
+  <section id="connectCard" class="card stack">
+    <p>On the Cardputer, open <strong>phone link</strong> from the menu. Then tap Connect and pick <strong>Cardputer_…</strong>.</p>
+    <button id="connectBtn" class="wide">Connect</button>
+    <p id="connectMsg" class="msg" hidden></p>
+  </section>
+
+  <section id="pinCard" class="card stack" hidden>
+    <h2>Enter the PIN on the Cardputer screen</h2>
+    <input id="pin" class="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
+    <button id="pinBtn" class="wide">Unlock</button>
+    <p id="pinMsg" class="msg" hidden></p>
+  </section>
+
+  <div id="app" hidden>
+    <section class="card">
+      <div class="row" style="margin-bottom:10px">
+        <h2 class="grow" style="margin:0">Status</h2>
+        <button id="refreshBtn" class="secondary">Refresh</button>
+      </div>
+      <dl>
+        <dt>Device</dt><dd id="sName">-</dd>
+        <dt>WiFi</dt><dd id="sWifi">-</dd>
+        <dt>Battery</dt><dd id="sBattery">-</dd>
+        <dt>GNSS</dt><dd id="sGnss">-</dd>
+      </dl>
+      <button id="wifiConnectBtn" class="secondary wide" style="margin-top:12px">Connect to a saved network now</button>
+      <p id="statusMsg" class="msg" hidden></p>
+    </section>
+
+    <section class="card">
+      <h2>Saved networks</h2>
+      <ul id="saved"></ul>
+      <p id="savedEmpty" class="hint" hidden>None saved yet.</p>
+      <p class="hint">Tried in this order on every boot. The newest one goes first.</p>
+    </section>
+
+    <section class="card stack">
+      <div class="row">
+        <h2 class="grow" style="margin:0">Add a network</h2>
+        <button id="scanBtn" class="secondary">Scan</button>
+      </div>
+      <ul id="scan"></ul>
+      <input id="ssid" placeholder="Network name (or pick from scan)" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="32">
+      <div class="row">
+        <input id="password" class="grow" type="password" placeholder="Password" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="64">
+        <button id="showPw" class="secondary" type="button">Show</button>
+      </div>
+      <button id="addBtn" class="wide">Test and save</button>
+      <button id="forceBtn" class="secondary wide" hidden>Save anyway</button>
+      <p id="addMsg" class="msg" hidden></p>
+      <p class="hint">iPhone hotspot: turn on <strong>Maximize Compatibility</strong> in Personal Hotspot settings. The Cardputer only sees 2.4 GHz networks.</p>
+    </section>
+
+    <button id="disconnectBtn" class="secondary wide">Disconnect</button>
+  </div>
+</main>
+
+<script>
+const SVC = "8e5a0001-3c2d-4b7a-9f10-6d2e4c8b1a01";
+const RX = "8e5a0002-3c2d-4b7a-9f10-6d2e4c8b1a01";
+const TX = "8e5a0003-3c2d-4b7a-9f10-6d2e4c8b1a01";
+const CHUNK = 20;
+
+const $ = (id) => document.getElementById(id);
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+let device = null, rxChar = null, rxBuf = "", nextId = 1;
+const pending = new Map();
+let queue = Promise.resolve();
+
+function show(el, on) { el.hidden = !on; }
+function msg(el, text, kind) { el.textContent = text; el.className = "msg " + (kind || "muted"); el.hidden = !text; }
+function setState(text, kind) { const s = $("state"); s.textContent = text; s.className = "pill" + (kind ? " " + kind : ""); }
+
+function onNotify(event) {
+  rxBuf += dec.decode(event.target.value);
+  let nl;
+  while ((nl = rxBuf.indexOf("\n")) >= 0) {
+    const line = rxBuf.slice(0, nl);
+    rxBuf = rxBuf.slice(nl + 1);
+    let resp;
+    try { resp = JSON.parse(line); } catch { continue; }
+    const p = pending.get(resp.id);
+    if (p) { pending.delete(resp.id); clearTimeout(p.timer); p.resolve(resp); }
+  }
+}
+
+async function writeLine(text) {
+  const bytes = enc.encode(text + "\n");
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const part = bytes.slice(i, i + CHUNK);
+    if (rxChar.writeValueWithResponse) await rxChar.writeValueWithResponse(part);
+    else await rxChar.writeValue(part);
+  }
+}
+
+function request(op, fields = {}, timeoutMs = 10000) {
+  const run = () => new Promise((resolve, reject) => {
+    if (!rxChar) return reject(new Error("Not connected"));
+    const id = nextId++;
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error("No answer from the Cardputer")); }, timeoutMs);
+    pending.set(id, { resolve, timer });
+    writeLine(JSON.stringify({ op, id, ...fields })).catch((e) => {
+      clearTimeout(timer); pending.delete(id); reject(e);
+    });
+  });
+  const p = queue.then(run, run);
+  queue = p.catch(() => {});
+  return p;
+}
+
+async function connect() {
+  msg($("connectMsg"), "");
+  try {
+    device = await navigator.bluetooth.requestDevice({ filters: [{ services: [SVC] }] });
+  } catch (e) {
+    if (e.name !== "NotFoundError") msg($("connectMsg"), e.message, "bad");
+    return;
+  }
+  device.addEventListener("gattserverdisconnected", onDisconnected);
+  setState("Connecting…");
+  $("connectBtn").disabled = true;
+  try {
+    const server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(SVC);
+    rxChar = await svc.getCharacteristic(RX);
+    const tx = await svc.getCharacteristic(TX);
+    tx.addEventListener("characteristicvaluechanged", onNotify);
+    await tx.startNotifications();
+    setState("Enter PIN", "warn");
+    show($("connectCard"), false);
+    show($("pinCard"), true);
+    $("pin").value = "";
+    $("pin").focus();
+  } catch (e) {
+    msg($("connectMsg"), "Couldn't connect: " + e.message, "bad");
+    setState("Not connected");
+    try { device.gatt.disconnect(); } catch {}
+  } finally {
+    $("connectBtn").disabled = false;
+  }
+}
+
+function onDisconnected() {
+  rxChar = null; rxBuf = "";
+  for (const [, p] of pending) { clearTimeout(p.timer); p.resolve({ ok: false, err: "Disconnected" }); }
+  pending.clear();
+  setState("Not connected");
+  show($("app"), false); show($("pinCard"), false); show($("connectCard"), true);
+}
+
+async function unlock() {
+  const pin = $("pin").value.replace(/\D/g, "");
+  if (pin.length !== 6) return msg($("pinMsg"), "The PIN has 6 digits.", "bad");
+  $("pinBtn").disabled = true;
+  try {
+    const r = await request("auth", { pin });
+    if (r.ok) {
+      setState("Connected", "ok");
+      show($("pinCard"), false); show($("app"), true);
+      msg($("pinMsg"), "");
+      await refresh();
+    } else if (r.err === "locked") {
+      msg($("pinMsg"), "Too many wrong PINs. The Cardputer made a new one; connect again.", "bad");
+    } else {
+      msg($("pinMsg"), "Wrong PIN. " + (r.left ?? "") + " tries left.", "bad");
+    }
+  } catch (e) { msg($("pinMsg"), e.message, "bad"); }
+  finally { $("pinBtn").disabled = false; }
+}
+
+function bars(rssi) {
+  if (rssi == null) return "";
+  const n = rssi > -55 ? 4 : rssi > -67 ? 3 : rssi > -78 ? 2 : 1;
+  return "▮".repeat(n) + "▯".repeat(4 - n);
+}
+
+function renderSaved(list) {
+  const ul = $("saved");
+  ul.replaceChildren();
+  show($("savedEmpty"), list.length === 0);
+  list.forEach((ssid, i) => {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = (i + 1) + ". " + ssid;
+    const btn = document.createElement("button");
+    btn.className = "link";
+    btn.textContent = "Forget";
+    btn.onclick = async () => {
+      if (!confirm("Forget " + ssid + "?")) return;
+      const r = await request("forget", { ssid });
+      if (r.saved) renderSaved(r.saved);
+    };
+    li.append(name, btn);
+    ul.append(li);
+  });
+}
+
+async function refresh() {
+  msg($("statusMsg"), "");
+  try {
+    const r = await request("status");
+    if (!r.ok) return msg($("statusMsg"), r.err, "bad");
+    $("sName").textContent = r.name || "-";
+    const w = r.wifi || {};
+    $("sWifi").textContent = w.connected ? `${w.ssid} · ${w.ip} ${bars(w.rssi)}` : "Offline";
+    $("sBattery").textContent = r.battery == null ? "-" : r.battery + "%";
+    const g = r.gnss || {};
+    $("sGnss").textContent = g.fix ? `Fix · ${g.sats} satellites` : `No fix (${g.sats || 0} satellites)`;
+    renderSaved(r.saved || []);
+  } catch (e) { msg($("statusMsg"), e.message, "bad"); }
+}
+
+async function scan() {
+  const btn = $("scanBtn");
+  btn.disabled = true; btn.textContent = "Scanning…";
+  try {
+    const r = await request("scan", {}, 20000);
+    const ul = $("scan");
+    ul.replaceChildren();
+    for (const n of r.networks || []) {
+      const li = document.createElement("li");
+      li.className = "pick";
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = n.ssid;
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = [n.saved ? "saved" : "", n.secured ? "" : "open"].filter(Boolean).join(" · ");
+      const b = document.createElement("span");
+      b.className = "bars";
+      b.textContent = bars(n.rssi);
+      li.append(name, tag, b);
+      li.onclick = () => {
+        ul.querySelectorAll("li").forEach((x) => x.classList.remove("selected"));
+        li.classList.add("selected");
+        $("ssid").value = n.ssid;
+        $("password").value = "";
+        $("password").disabled = !n.secured;
+        if (n.secured) $("password").focus();
+      };
+      ul.append(li);
+    }
+    if (!r.networks || !r.networks.length) msg($("addMsg"), "No networks found.", "muted");
+  } catch (e) { msg($("addMsg"), e.message, "bad"); }
+  finally { btn.disabled = false; btn.textContent = "Scan"; }
+}
+
+async function add(force) {
+  const ssid = $("ssid").value.trim();
+  if (!ssid) return msg($("addMsg"), "Pick or type a network name.", "bad");
+  const password = $("password").value;
+  $("addBtn").disabled = true; show($("forceBtn"), false);
+  msg($("addMsg"), force ? "Saving…" : "Testing " + ssid + "… (up to 15 s)", "muted");
+  try {
+    const r = await request("add", { ssid, password, force: !!force }, 30000);
+    if (r.saved) renderSaved(r.saved);
+    if (r.ok) {
+      msg($("addMsg"), "Connected (" + r.ip + ") and saved.", "ok");
+      $("password").value = "";
+      refresh();
+    } else if (force) {
+      msg($("addMsg"), "Saved. It will be tried on the next boot.", "ok");
+    } else {
+      msg($("addMsg"), "Couldn't connect: " + r.err + ". Check the password, or that the hotspot is on.", "bad");
+      show($("forceBtn"), true);
+    }
+  } catch (e) { msg($("addMsg"), e.message, "bad"); }
+  finally { $("addBtn").disabled = false; }
+}
+
+async function wifiConnect() {
+  const btn = $("wifiConnectBtn");
+  btn.disabled = true;
+  msg($("statusMsg"), "Connecting…", "muted");
+  try {
+    const r = await request("connect", {}, 45000);
+    msg($("statusMsg"), r.ok ? "Connected." : "Couldn't connect: " + r.err, r.ok ? "ok" : "bad");
+    if (r.ok) refresh();
+  } catch (e) { msg($("statusMsg"), e.message, "bad"); }
+  finally { btn.disabled = false; }
+}
+
+if (!navigator.bluetooth) {
+  show($("unsupported"), true);
+  $("connectBtn").disabled = true;
+}
+$("connectBtn").onclick = connect;
+$("pinBtn").onclick = unlock;
+$("pin").addEventListener("keydown", (e) => { if (e.key === "Enter") unlock(); });
+$("refreshBtn").onclick = refresh;
+$("scanBtn").onclick = scan;
+$("addBtn").onclick = () => add(false);
+$("forceBtn").onclick = () => add(true);
+$("wifiConnectBtn").onclick = wifiConnect;
+$("showPw").onclick = () => {
+  const p = $("password");
+  p.type = p.type === "password" ? "text" : "password";
+  $("showPw").textContent = p.type === "password" ? "Show" : "Hide";
+};
+$("ssid").addEventListener("input", () => { $("password").disabled = false; });
+$("disconnectBtn").onclick = () => { if (device && device.gatt.connected) device.gatt.disconnect(); };
+</script>
+</body>
+</html>
